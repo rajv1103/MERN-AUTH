@@ -155,6 +155,9 @@ export const sendVerifyOtp = async (req, res) => {
       return res.json({ success: false, message: "User does not exist" });
     }
 
+    if (user.isAccountVerified) {
+      return res.json({ success: false, message: "User already verified" });
+    }
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     user.verifyOtp = otp;
     user.verifyOtpExpireAt = Date.now() + 12 * 60 * 60 * 1000; // 12 hours
@@ -225,34 +228,98 @@ export const isLogged = async (req, res) => {
   }
 };
 
-export const sendResetOtp = async (req, res) => {
+export const sendResetPassword = async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const { email } = req.body;
+    if (!email) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User ID is required" });
+    }
+
     const user = await userModel.findOne({ email });
     if (!user) {
-      return res.json({ success: false, message: "User Not Exists" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User does not exist" });
     }
-    const otp = String(Math.floor(100000 + Math.random() + 900000));
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit OTP
     user.resetOtp = otp;
-    user.resetOtpExpireAt = Date.now() + 12 * 60 * 60 * 1000;
+    user.resetOtpExpireAt = Date.now() + 12 * 60 * 60 * 1000; // 12 hours from now
     await user.save();
+
     try {
-      const isSend = await resetOtpMail({ email, name, otp });
-      if (!isSend.success) {
-        return res.json({ success: true, message: "Reset Mail Otp Sended" });
+      const isSend = await resetOtpMail({
+        to: user.email,
+        name: user.name,
+        otp,
+      });
+      if (isSend.success) {
+        return res.status(200).json({
+          success: true,
+          message: "Reset OTP email sent successfully",
+        });
+      } else {
+        return res
+          .status(500)
+          .json({ success: false, message: "Failed to send OTP email" });
       }
-    } catch (e) {
-      return res.json({ success: false, message: "Can't send mail"});
+    } catch (mailError) {
+      return res.status(500).json({
+        success: false,
+        message: "Error sending OTP email",
+        error: mailError.message,
+      });
     }
-  } catch (e) {
-      return res.json({ success: false, message: e.message });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: err.message,
+    });
   }
 };
 
-export const verifyResetOtp=async(req,res)=>{
-     try {
-        
-     } catch (error) {
-       return 
-     }
-}
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User ID and OTP are required" });
+    }
+
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    const isOtpValid =
+      user.resetOtp === otp && Date.now() <= user.resetOtpExpireAt;
+    if (isOtpValid) {
+      user.resetOtp = "";
+      user.resetOtpExpireAt = 0;
+      const hashpww = await bcrypt.hash(newPassword, 10);
+      user.password = hashpww;
+      await user.save();
+
+      return res
+        .status(200)
+        .json({ success: true, message: "OTP verified successfully" });
+    } else {
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid or expired OTP" });
+    }
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};

@@ -1,0 +1,10 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Bitcount+Single+Ink:wght@100..900&family=Outfit:wght@100..900&display=swap');
+/* Tailwind CSS directives removed. Make sure to include the compiled Tailwind CSS in your project. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+*{
+   font-family: "Outfit", sans-serif;
+}
